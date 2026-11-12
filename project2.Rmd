@@ -1,0 +1,75 @@
+#Miniproject
+#Balapravena A S (26250009)
+#Github : https://github.com/Balapravena/be623-project2.git
+#1a :
+setwd("~/project2")
+counts <- read.csv("airway_counts.csv", row.names = 1)
+samples <- read.csv("airway_samples.csv")
+dim(counts)
+str(samples)
+#1b :
+#samples$lib_size <- colSums(counts)
+#samples %>%
+#group_by(group) %>%
+#    summarize()
+#    mean_library_size = mean(lib_size)
+
+#2a:
+rownames(samples) <- samples$run
+dds <- DESeqDataSetFromMatrix(countData = as.matrix(counts),colData = samples, design = ~ group)
+levels(dds$group)
+dds$group <- factor(dds$group, levels = c("untrt","trt"))
+levels(dds$group)
+#2b:
+keep <- rowSums(counts(dds) >=10) >=2
+dds <- dds[keep, ]
+nrow(dds)
+#2c:
+vsd <- vst(dds, blind =TRUE)
+dir.create("plots", showWarnings = FALSE)
+p_pca <- plotPCA(vsd, intgroup ="group")
+p_pca
+ggsave("plots/PCA.png", p_pca, width =7, height =5, dpi=300)
+#variance of PC1 : 42% and variance of PC2 : 26% (the percentages on the axes show how much of the variation each axis explains)
+#Yes, treated and untreated samples got separated separate from each other (along y-axis)
+
+#3a:
+dds <- DESeq(dds)
+write.csv(counts(dds, normalized =TRUE),"results/normalized_counts.csv", quote =FALSE)
+#3b:
+numerator <-"trt"
+denominator <-"untrt"
+comparison <- paste0(numerator,"_vs_", denominator)
+res <- results(dds, contrast = c("group","trt", "untrt"))
+res <- res[order(res$padj), ]
+res_df <- as.data.frame(res)
+res_df$gene <- rownames(res_df)
+res_df$status <-"Not significant"
+res_df$status[res_df$padj < 0.05 & res_df$log2FoldChange >= 1] <-"Up"
+res_df$status[res_df$padj < 0.05 & res_df$log2FoldChange <= -1] <-"Down"
+table(res_df$status)
+#Upregulated = 465
+#Downregulated = 388
+#3c:
+degs <- subset(res_df, status %in% c("Up","Down"))
+nrow(degs)
+head(degs)
+write.csv(res_df,paste0("results/",comparison,"_all_genes.csv"), row.names =FALSE)
+write.csv(degs, paste0("results/",comparison,"_DEGs.csv"),row.names =FALSE)
+deg_table <- read.csv(paste0("results/",comparison,"_DEGs.csv"))
+head(deg_table)
+#3d:
+#A gene has log2FC=3 indicates that the numerator sample has 3 fold times higher gene expression than the denominator sample 
+#4a:
+volcano_data <- res_df[!is.na(res_df$padj), ]
+p_volcano <- ggplot(volcano_data, aes(x = log2FoldChange, y = -log10(padj), color = status)) + 
+    geom_point(alpha = 0.6) + 
+    scale_color_manual(values = c("Up"="firebrick","Down"="steelblue","Not significant"="grey70")) + 
+    geom_vline(xintercept = c(-1,1), linetype ="dashed") +
+    geom_hline(yintercept = -log10(0.05), linetype="dashed")+ 
+    labs(title = "trt_vs_untrt", x ="log2 fold change", y="-log10 adjusted p-value") + 
+    theme_bw()
+ggsave(paste0("plots/volcano_", comparison,".png"),p_volcano, width =6, height =5, dpi =300)
+p_volcano
+#Upregulated genes are represented as red and doenregulated genes are represented as blue. It explains the genes expression and its statistical significance. 
+#The strongest hits are the highest andfurthest from the centre.
